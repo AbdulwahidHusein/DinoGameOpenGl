@@ -8,6 +8,7 @@
 #include <GL/glut.h>
 #include <GL/glu.h>
 #include<fstream>
+#include<vector>
 
 using namespace std;
 
@@ -22,12 +23,18 @@ static int pause = 0;
 static double dino_y = 200;
 static int canJump = 0;
 static int walk = 0;
-static int tree_x = 2500;
+static int tree_separation = 2000;
+static int tree1_x = 2500;
+static int tree2_x = tree1_x + tree_separation + rand()%700;
 static int score = 0;
 static int count = 100;
 static int highScore = 0;
+static int fruits_x[5] = { 1000, 9000, 15000, 22000, 40000 };
+static int eatn[5] = { 0, 0, 0, 0, 0 };
 
-void animate(int);
+vector<vector<float>> scoreAnimationPoses;
+
+void callRedisplay(int);
 void keyInput(unsigned char, int, int);
 bool collision(double);
 void specialKeyInput(int, int, int);
@@ -52,10 +59,10 @@ int main(int argc, char** argv) {
     return 0;
 }
 
-void animate(int) {
+void callRedisplay(int) {
     if (pause) {
         glutPostRedisplay();
-        glutTimerFunc(gameLevel, animate, 1);
+        glutTimerFunc(gameLevel + 5, callRedisplay, 1);
     }
 }
 
@@ -65,7 +72,7 @@ void keyInput(unsigned char key, int x, int y) {
             exit(0);
         case ' ':
             pause = !pause;
-            if (pause) animate(1);
+            if (pause) callRedisplay(1);
             break;
     }
 }
@@ -82,26 +89,28 @@ void setHighScore(){
     myfile<<highScore;
 }
 bool collision(double len) {
-    if (abs(xcoord - tree_x) <= 70) {
+    if (abs(xcoord - tree1_x) <= 70) {
+        return (dino_y <= 650);
+    }
+    if (abs(xcoord - tree2_x) <= 70) {
         return (dino_y <= 650);
     }
     return false;
 }
 
 void specialKeyInput(int key, int x, int y) {
-    if (key == GLUT_KEY_UP && canJump == 0 && dino_y <= 200.0) {
+    if (key == GLUT_KEY_UP && canJump == 0 && dino_y <= 600.0) {
         canJump = 1;
     }
     //glutPostRedisplay();
 }
 
 void draw_tree(int tree_x, float len) {
-    if (tree_x < 10) {
-        score += 1;
-        if (score % 9 == 0) {
-            if (gameLevel > 1) { gameLevel -= 1; }
-        }
+    if (score % 9 == 0) {
+        if (gameLevel > 1) { gameLevel -= 1; }
+        tree_separation >= 600 ? tree_separation -= 200 : tree_separation;
     }
+
 
     len -= 0.15;
     // Color for the trunk
@@ -168,11 +177,13 @@ void reset() {
     dino_y = 200;
     canJump = 0;
     walk = 0;
-    tree_x = 2500;
+    tree1_x = 2500;
+    tree2_x = tree1_x + tree_separation + rand()%700;
     pause = 1;
     gameLevel = 12;
     count = 100;
     highScore = highScore > score ? highScore : score;
+    tree_separation = 2000;
     setHighScore();
     score = 0;
 }
@@ -203,24 +214,45 @@ void drawDino(double w, double walk, int factor) {
 }
 
 void drawStar(float x, float y, float size) {
-    glBegin(GL_POLYGON);
-    glColor3f(1.0f, 1.0f, 1.0f); // White color for the star
+    const int numPoints = 5;
+    const float outerRadius = size;
+    const float innerRadius = size * 0.5f; 
+    const float angleIncrement = 3.14159265358979323846 / numPoints; 
 
-    for (int i = 0; i < 5; ++i) {
-        // Outer vertex
-        glVertex2f(
-            x + size * cos(i * 4 * M_PI / 5),
-            y + size * sin(i * 4 * M_PI / 5)
-        );
-        // Inner vertex
-        glVertex2f(
-            x + (size / 2) * cos((i * 4 + 2) * M_PI / 5),
-            y + (size / 2) * sin((i * 4 + 2) * M_PI / 5)
-        );
+    glBegin(GL_TRIANGLE_FAN);
+    glColor3f(1.0f, 1.0f, 1.0f);
+    glVertex2f(x, y); // Center of the star
+
+    for (int i = 0; i <= 2 * numPoints; ++i) {
+        float angle = i * angleIncrement;
+        float radius = (i % 2 == 0) ? outerRadius : innerRadius;
+        float xPos = x + radius * cos(angle);
+        float yPos = y + radius * sin(angle);
+        glVertex2f(xPos, yPos);
+    }
+    
+    glEnd();
+}
+
+void drawFruit(int x, int y, int size){
+    float radius = size / 2.0f;
+    float centerX = x + radius;
+    float centerY = y + radius;
+    int numSides = 10;
+
+    glBegin(GL_POLYGON);
+    glColor3f(1.0f, 0.843f, 0.0f); 
+
+    for (int i = 0; i < numSides; ++i) {
+        float theta = 2.0f * 3.1415926f * float(i) / float(numSides); 
+        float vertexX = radius * cosf(theta); 
+        float vertexY = radius * sinf(theta); 
+        glVertex2f(centerX + vertexX, centerY + vertexY); 
     }
 
     glEnd();
 }
+
 
 void render() {
     glClear(GL_COLOR_BUFFER_BIT);
@@ -251,14 +283,66 @@ void render() {
         glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, c);
     }
 
+
+    for (int i = 0; i < 5; i++) {
+        if (abs(fruits_x[i]-100) < 50 && abs(dino_y -760) < 120 && !eatn[i])  {
+            eatn[i] = 1;
+            scoreAnimationPoses.push_back({150, 750});
+        }
+    }
+
+
+    for (int i = 0; i < scoreAnimationPoses.size(); i++) {
+        int x = scoreAnimationPoses[i][0];
+        int y = scoreAnimationPoses[i][1];
+        if (abs(x -1700) > 20){
+            scoreAnimationPoses[i][0] += 1;
+            scoreAnimationPoses[i][1] += 0.65;
+            glRasterPos2f(x, y);
+            string scoreStr = "+ " + to_string(3);
+            for (char c : scoreStr) {
+                glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, c);
+        }
+        }
+        else{
+            score += 3;
+            scoreAnimationPoses.pop_back();
+        }
+        
+        
+    }
+
     // Generate tree
-    draw_tree(tree_x, 1.0);
+    draw_tree(tree1_x, 1.0);
+    draw_tree(tree2_x, 1.0);
 
-    if (tree_x >= 0)
-        tree_x -= 5;
+    if (tree1_x >= 0)
+        tree1_x -= 5;
     else
-        tree_x = 2000 + rand() % 200;
+        tree1_x = 2000 + rand() % 200;
+        if (abs(tree1_x - tree2_x) < tree_separation) {
+            tree1_x = tree2_x + tree_separation + rand() % 700;
+        }
+    if (tree2_x >= 0)
+        tree2_x -= 5;
+    else
+        tree2_x = 2700 + rand() % 500;
+        if (abs(tree1_x - tree2_x) < tree_separation) {
+            tree2_x = tree1_x + tree_separation + rand() % 700;
+        }
 
+    for (int i = 0; i < 5; i++) {
+        if (!eatn[i])
+            drawFruit(fruits_x[i], 950, 70);
+    }
+    for (int i = 0; i < 5; i++) {
+        if (fruits_x[i] >= 0) {
+            fruits_x[i] -= 10;
+        } else {
+            fruits_x[i] = 5000 + rand() % 2000;
+            eatn[i] = 0;
+        }
+    }
     // Draw ground line
     glLineWidth(2);
     glBegin(GL_LINES);
@@ -297,8 +381,9 @@ void render() {
     if (count == 0) {
         count = 100;
     }
-    if (count % 3 != 0)
-        glutPostRedisplay();
+    if (count % 4 == 0)
+        //glutPostRedisplay();
+        3;
     count -= 1;
 
     glFlush();
